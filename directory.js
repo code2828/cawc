@@ -14,7 +14,10 @@
       const line = clean(rawLine);
       if (!line) continue;
       const match = line.match(/^(\S+)\s+(.+)$/);
-      if (!match) continue;
+      if (!match) {
+        if (subdivision && !/^(缺州府：|共\d)/.test(line)) subdivision.items.push(line);
+        continue;
+      }
       const code = match[1];
       const value = match[2].trim();
       if (/^[0-9A-F]{2}$/.test(code)) {
@@ -104,10 +107,6 @@
       mapButton.dataset.code = data.code;
       mapButton.dataset.name = data.name + data.type;
       header.append(mapButton);
-      toggle.querySelector(".name").addEventListener("click", (event) => {
-        event.stopPropagation();
-        mapButton.click();
-      });
     }
     const content = document.createElement("div");
     content.className = "group-content";
@@ -154,8 +153,33 @@
     }));
     const fu = populated.filter((subdivision) => subdivision.type === "府").length;
     const jun = populated.filter((subdivision) => subdivision.type === "郡").length;
-    summary.textContent = `共${states.length}州、${fu}府、${jun}郡、${counts.市}市、${counts.县}县、${counts.域}域（府郡仅统计有下辖条目的行政区）`;
+    summary.textContent = `共${states.length}州、${fu}府、${jun}郡、${counts.市}市、${counts.县}县、${counts.域}域`;
     return summary;
+  }
+
+  function createMissingPrefectures(states) {
+    const missing = states.flatMap((state) => state.subdivisions
+      .filter((subdivision) => subdivision.type === "府" && subdivision.items.length === 0)
+      .map((subdivision) => `${state.name}${subdivision.name}府`));
+    const section = document.createElement("section");
+    section.className = "missing-prefectures";
+    const title = document.createElement("h2");
+    title.textContent = "缺州府";
+    section.append(title);
+    if (missing.length === 0) {
+      const message = document.createElement("p");
+      message.textContent = "无";
+      section.append(message);
+      return section;
+    }
+    const list = document.createElement("ul");
+    missing.forEach((name) => {
+      const item = document.createElement("li");
+      item.textContent = name;
+      list.append(item);
+    });
+    section.append(list);
+    return section;
   }
 
   function render(states) {
@@ -196,6 +220,7 @@
     }
     body.append(directory);
     body.append(createSummary(states));
+    body.append(createMissingPrefectures(states));
     setupInteractions(directory);
   }
 
