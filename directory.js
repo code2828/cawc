@@ -53,27 +53,15 @@
     const name = fields.shift() || "";
     const aliases = [];
     for (const field of fields) {
-      if (field === "=") {
-        aliases.push({ mode: "parent", suffix: "" });
-      } else if (field.startsWith("=")) {
-        aliases.push({ mode: "parent", suffix: field.slice(1) });
-      } else if (field === "-") {
-        aliases.push({ mode: "item", suffix: "" });
-      } else if (field.startsWith("-")) {
-        aliases.push({ mode: "item", suffix: field.slice(1) });
-      } else {
-        aliases.push({ mode: "local", value: field });
-      }
+      aliases.push({ value: field });
     }
     const parentName = withoutType(subdivision.name);
     const itemName = withoutType(name);
     return {
       name,
-      aliases: aliases.map((alias) => {
-        if (alias.mode === "parent") return { mode: alias.mode, value: parentName + alias.suffix };
-        if (alias.mode === "item") return { mode: alias.mode, value: itemName + alias.suffix };
-        return { mode: alias.mode, value: alias.value };
-      })
+      aliases: aliases.map((alias) => ({
+        value: alias.value.replace(/=/g, parentName).replace(/-/g, itemName)
+      }))
     };
   }
 
@@ -376,10 +364,49 @@
         section.querySelector(".toggle").setAttribute("aria-expanded", String(open));
       });
     });
+    let openBeforeSearch;
     controls.querySelector("input").addEventListener("input", (event) => {
       const query = event.target.value.trim().toLowerCase();
-      directory.querySelectorAll(".directory-group").forEach((section) => section.classList.toggle("is-filtered-out", Boolean(query) && !section.textContent.toLowerCase().includes(query)));
-      directory.querySelectorAll(".directory-item").forEach((item) => item.classList.toggle("is-filtered-out", Boolean(query) && !item.textContent.toLowerCase().includes(query)));
+      const groups = Array.from(directory.querySelectorAll(".directory-group"));
+      if (!query) {
+        directory.querySelectorAll(".is-filtered-out").forEach((element) => element.classList.remove("is-filtered-out"));
+        if (openBeforeSearch) {
+          groups.forEach((section) => {
+            const open = openBeforeSearch.has(section);
+            section.classList.toggle("is-open", open);
+            section.querySelector(":scope > .group-header .toggle").setAttribute("aria-expanded", String(open));
+          });
+          openBeforeSearch = null;
+        }
+        return;
+      }
+      if (!openBeforeSearch) openBeforeSearch = new Set(groups.filter((section) => section.classList.contains("is-open")));
+
+      function filterGroup(section, ancestorMatches) {
+        const title = section.querySelector(":scope > .group-header .name").textContent.toLowerCase();
+        const matches = ancestorMatches || title.includes(query);
+        let hasVisibleContent = false;
+        const content = section.querySelector(":scope > .group-content");
+        Array.from(content.children).forEach((child) => {
+          if (child.classList.contains("directory-group")) {
+            const visible = filterGroup(child, matches);
+            if (visible) hasVisibleContent = true;
+          } else if (child.classList.contains("directory-item")) {
+            const visible = matches || child.textContent.toLowerCase().includes(query);
+            child.classList.toggle("is-filtered-out", !visible);
+            if (visible) hasVisibleContent = true;
+          }
+        });
+        const visible = matches || hasVisibleContent;
+        section.classList.toggle("is-filtered-out", !visible);
+        if (visible) {
+          section.classList.add("is-open");
+          section.querySelector(":scope > .group-header .toggle").setAttribute("aria-expanded", "true");
+        }
+        return visible;
+      }
+
+      directory.querySelectorAll(":scope > .directory-group").forEach((section) => filterGroup(section, false));
     });
   }
 
